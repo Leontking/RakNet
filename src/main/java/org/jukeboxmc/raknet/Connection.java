@@ -143,11 +143,45 @@ public class Connection {
             this.handleACK( buffer );
             System.out.println( "ACK was handelt!" );
         } else if ( ( packetId & BitFlags.NACK ) != 0 ) {
+            System.out.println( "Handle NACK.." );
             this.handleNACK( buffer );
+            System.out.println( "NACK was handelt!" );
         } else {
             System.out.println( "Datagram" );
             this.handleDatagram( buffer.readerIndex( 0 ) );
         }
+    }
+
+    private void handlePacket( EncapsulatedPacket packet ) {
+        if ( packet.split ) {
+            this.handleSplit( packet );
+            return;
+        }
+        int id =  packet.buffer.readUnsignedByte();
+
+        if ( id < 0x80 ) {
+            if ( this.state == Status.CONNECTING ) {
+                if ( id == Identifiers.ConnectionRequest ) {
+                    this.handleConnectionRequest( packet.buffer );
+                } else if ( id == Identifiers.NewIncomingConnection ) {
+                    NewIncomingConnection incomingConnection = new NewIncomingConnection();
+                    incomingConnection.fill( packet.buffer );
+                    incomingConnection.read();
+
+                    int serverPort = this.listener.getAddress().getPort();
+                    if ( incomingConnection.getAddress().getPort() == serverPort ) {
+                        this.state = Status.CONNECTED;
+                    }
+                }
+            } else if ( id == Identifiers.DisconnectNotification ) {
+                this.disconnect( "Client disconnect" );
+            } else if ( id == Identifiers.ConnectedPing ) {
+                this.handleConnectedPing( packet.buffer );
+            }
+        } else if ( this.state == Status.CONNECTED ) {
+            System.out.println( "Allready connected" );
+        }
+        System.out.println( "STATE-> " + this.state.name() + "ID: " + id );
     }
 
     private void handleDatagram( ByteBuf buffer ) {
@@ -258,37 +292,6 @@ public class Connection {
             } else {
                 this.reliableWindow.put( packet.messageIndex, packet );
             }
-        }
-    }
-
-    private void handlePacket( EncapsulatedPacket packet ) {
-        if ( packet.split ) {
-            this.handleSplit( packet );
-            return;
-        }
-        byte id = packet.buffer.readByte();
-
-        if ( id <= 0x79 ) {
-            if ( this.state == Status.CONNECTING ) {
-                if ( id == Identifiers.ConnectionRequest ) {
-                    this.handleConnectionRequest( packet.buffer );
-                } else if ( id == Identifiers.NewIncomingConnection ) {
-                    NewIncomingConnection incomingConnection = new NewIncomingConnection();
-                    incomingConnection.fill( packet.buffer );
-                    incomingConnection.read();
-
-                    int serverPort = this.listener.getAddress().getPort();
-                    if ( incomingConnection.getAddress().getPort() == serverPort ) {
-                        this.state = Status.CONNECTED;
-                    }
-                }
-            } else if ( id == Identifiers.DisconnectNotification ) {
-                this.disconnect( "Client disconnect" );
-            } else if ( id == Identifiers.ConnectedPing ) {
-                this.handleConnectedPing( packet.buffer );
-            }
-        } else if ( this.state == Status.CONNECTED ) {
-            System.out.println( "Allready connected" );
         }
     }
 
