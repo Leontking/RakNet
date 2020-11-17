@@ -77,6 +77,7 @@ public class Connection {
             return;
         }
         this.isActive = false;
+
         if ( this.ackQueue.size() > 0 ) {
             ACK ack = new ACK();
             ack.setPackets( this.ackQueue );
@@ -130,64 +131,33 @@ public class Connection {
         this.sendQueue();
     }
 
-    void receive( DatagramPacket datagramPacket ) {
+    void receive( ByteBuf buffer ) {
         this.isActive = true;
         this.lastUpdate = System.currentTimeMillis();
 
-        ByteBuf buffer = datagramPacket.content();
-        byte packetId = buffer.readByte();
+        ByteBuf duplicate = buffer.duplicate();
+        int packetId = buffer.readUnsignedByte();
 
         if ( ( packetId & BitFlags.VALID ) == 0 ) {//Ignore
         } else if ( ( packetId & BitFlags.ACK ) != 0 ) {
-            System.out.println( "Handle ACK" );
             this.handleACK( buffer );
-            System.out.println( "ACK was handelt!" );
         } else if ( ( packetId & BitFlags.NACK ) != 0 ) {
             System.out.println( "Handle NACK.." );
             this.handleNACK( buffer );
             System.out.println( "NACK was handelt!" );
         } else {
-            System.out.println( "Datagram" );
-            this.handleDatagram( buffer.readerIndex( 0 ) );
+            System.out.println( "Datagram -> " + packetId );
+            this.handleDatagram(duplicate );
         }
     }
 
-    private void handlePacket( EncapsulatedPacket packet ) {
-        if ( packet.split ) {
-            this.handleSplit( packet );
-            return;
-        }
-        int id =  packet.buffer.readUnsignedByte();
-
-        if ( id < 0x80 ) {
-            if ( this.state == Status.CONNECTING ) {
-                if ( id == Identifiers.ConnectionRequest ) {
-                    this.handleConnectionRequest( packet.buffer );
-                } else if ( id == Identifiers.NewIncomingConnection ) {
-                    NewIncomingConnection incomingConnection = new NewIncomingConnection();
-                    incomingConnection.fill( packet.buffer );
-                    incomingConnection.read();
-
-                    int serverPort = this.listener.getAddress().getPort();
-                    if ( incomingConnection.getAddress().getPort() == serverPort ) {
-                        this.state = Status.CONNECTED;
-                    }
-                }
-            } else if ( id == Identifiers.DisconnectNotification ) {
-                this.disconnect( "Client disconnect" );
-            } else if ( id == Identifiers.ConnectedPing ) {
-                this.handleConnectedPing( packet.buffer );
-            }
-        } else if ( this.state == Status.CONNECTED ) {
-            System.out.println( "Allready connected" );
-        }
-        System.out.println( "STATE-> " + this.state.name() + "ID: " + id );
-    }
-
+    //TODO
     private void handleDatagram( ByteBuf buffer ) {
         DataPacket dataPacket = new DataPacket();
-        dataPacket.fill( buffer );
+        dataPacket.buffer = buffer;
         dataPacket.read();
+
+        System.out.println( dataPacket.toString() );
 
         if ( dataPacket.sequenceNumber < this.windowStart || dataPacket.sequenceNumber > this.windowEnd || this.receivedWindow.contains( dataPacket.sequenceNumber ) ) {
             return;
@@ -224,6 +194,37 @@ public class Connection {
         }
     }
 
+    private void handlePacket( EncapsulatedPacket packet ) {
+        if ( packet.split ) {
+            this.handleSplit( packet );
+            return;
+        }
+        int id =  packet.buffer.readUnsignedByte();
+
+        if ( id < 0x80 ) {
+            if ( this.state == Status.CONNECTING ) {
+                if ( id == Identifiers.ConnectionRequest ) {
+                    this.handleConnectionRequest( packet.buffer );
+                } else if ( id == Identifiers.NewIncomingConnection ) {
+                    NewIncomingConnection incomingConnection = new NewIncomingConnection();
+                    incomingConnection.fill( packet.buffer );
+                    incomingConnection.read();
+
+                    int serverPort = this.listener.getAddress().getPort();
+                    if ( incomingConnection.getAddress().getPort() == serverPort ) {
+                        this.state = Status.CONNECTED;
+                    }
+                }
+            } else if ( id == Identifiers.DisconnectNotification ) {
+                this.disconnect( "Client disconnect" );
+            } else if ( id == Identifiers.ConnectedPing ) {
+                this.handleConnectedPing( packet.buffer );
+            }
+        } else if ( this.state == Status.CONNECTED ) {
+            System.out.println( "Allready connected: " + id );
+        }
+    }
+
     private void handleACK( ByteBuf buffer ) {
         ACK packet = new ACK();
         packet.fill( buffer );
@@ -250,8 +251,10 @@ public class Connection {
         }
     }
 
-    private void receivePacket( EncapsulatedPacket packet ) {
+    //HERE Nach Success 9 sollte er 10
+    public void receivePacket( EncapsulatedPacket packet ) {
         if ( packet.messageIndex == -1 ) {
+            System.out.println( "HandlePacket" );
             this.handlePacket( packet );
         } else {
             System.out.println( "Success -> " + packet.messageIndex );
@@ -292,6 +295,33 @@ public class Connection {
             } else {
                 this.reliableWindow.put( packet.messageIndex, packet );
             }
+        }
+    }
+
+    //Here
+    private void handleSplit( EncapsulatedPacket packet ) {
+        System.out.println( "HandleSplit" );
+        if ( this.splitPackets.containsKey( packet.splitID ) ) {
+            Map<Integer, EncapsulatedPacket> packetMap = this.splitPackets.get( packet.splitID );
+            packetMap.put( packet.splitIndex, packet );
+            this.splitPackets.put( packet.splitID, packetMap );
+        } else {
+            Map<Integer, EncapsulatedPacket> map = new LinkedHashMap<>();
+            map.put( packet.splitIndex, packet );
+            this.splitPackets.put( packet.splitID, map );
+        }
+
+        Map<Integer, EncapsulatedPacket> localSplits = this.splitPackets.get( packet.splitID );
+        if ( localSplits.size() == packet.splitCount ) {
+            EncapsulatedPacket pk = new EncapsulatedPacket();
+            ByteBuf buffer = Unpooled.buffer( localSplits.values().size() );
+            for ( EncapsulatedPacket value : localSplits.values() ) {
+                buffer.writeBytes( value.buffer );
+            }
+            this.splitPackets.remove( packet.splitID );
+
+            pk.buffer = buffer;
+            this.receivePacket( pk );
         }
     }
 
@@ -392,33 +422,6 @@ public class Connection {
         }
     }
 
-    private void handleSplit( EncapsulatedPacket packet ) {
-        System.out.println( "HandleSplit" );
-        if ( this.splitPackets.containsKey( packet.splitID ) ) {
-            Map<Integer, EncapsulatedPacket> packetMap = this.splitPackets.get( packet.splitID );
-            packetMap.put( packet.splitIndex, packet );
-            this.splitPackets.put( packet.splitID, packetMap );
-        } else {
-            Map<Integer, EncapsulatedPacket> map = new LinkedHashMap<>();
-            map.put( packet.splitIndex, packet );
-            this.splitPackets.put( packet.splitID, map );
-        }
-
-        Map<Integer, EncapsulatedPacket> localSplits = this.splitPackets.get( packet.splitID );
-        if ( localSplits.size() == packet.splitCount ) {
-            EncapsulatedPacket pk = new EncapsulatedPacket();
-            BinaryStream stream = new BinaryStream();
-            for ( EncapsulatedPacket value : localSplits.values() ) {
-                stream.writeBytes( value.buffer );
-            }
-            this.splitPackets.remove( packet.splitID );
-
-            pk.buffer = stream.getBuffer();
-            this.receivePacket( pk );
-            System.out.println( "RECIVED" );
-        }
-    }
-
     private void sendQueue() {
         if ( this.sendQueue.getPackets().size() > 0 ) {
             this.sendQueue.sequenceNumber = this.sendSequenceNumber++;
@@ -432,8 +435,9 @@ public class Connection {
 
     public void sendPacket( Packet packet, boolean write ) {
         if ( write ) {
-            this.sendPacket( packet );
+            packet.write();
         }
+        this.sendPacket( packet );
     }
 
     public void sendPacket( Packet packet ) {

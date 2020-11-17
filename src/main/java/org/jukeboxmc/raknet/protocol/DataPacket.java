@@ -25,11 +25,11 @@ public class DataPacket extends Packet {
 
     @Override
     public void read() {
-        this.getBuffer().readByte();
+        super.read();
         this.sequenceNumber = this.getBuffer().readUnsignedMediumLE();
 
         while ( !this.feof() ) {
-            this.packets.add( EncapsulatedPacket.fromBinary( this.getBuffer() ) );
+            this.packets.add( EncapsulatedPacket.fromBinary( this.buffer ) );
         }
     }
 

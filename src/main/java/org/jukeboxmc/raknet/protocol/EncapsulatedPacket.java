@@ -65,6 +65,7 @@ public class EncapsulatedPacket {
         }
 
         packet.buffer = buffer.readSlice( size );
+        System.out.println( packet.toString() );
         return packet;
     }
 

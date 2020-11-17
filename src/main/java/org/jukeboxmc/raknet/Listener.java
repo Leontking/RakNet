@@ -56,10 +56,9 @@ public class Listener {
             public void channelRead( ChannelHandlerContext ctx, Object msg ) {
                 DatagramPacket packet = (DatagramPacket) msg;
                 InetSocketAddress sender = packet.sender();
-                BinaryStream stream = new BinaryStream( packet.content() );
-                handlePackets( stream, packet, sender, ctx );
-
-                stream.getBuffer().release();
+                ByteBuf content = packet.content();
+                handlePackets( content, sender, ctx );
+                content.release();
             }
         } );
 
@@ -73,26 +72,26 @@ public class Listener {
         return this.isRunning;
     }
 
-    private void handlePackets( BinaryStream stream, DatagramPacket datagramPacket, InetSocketAddress address, ChannelHandlerContext ctx ) {
-        byte packetId = stream.getBuffer().getByte( 0 );
+    private void handlePackets( ByteBuf buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
+        int packetId = buffer.getUnsignedByte( 0 );
         if ( packetId == Identifiers.Query ) {
             return;
         }
         String token = address.getHostName() + ":" + address.getPort();
         if ( this.connections.containsKey( token ) ) {
             Connection connection = this.connections.get( token );
-            connection.receive( datagramPacket );
+            connection.receive( buffer );
 
         } else {
             switch ( packetId ) {
                 case Identifiers.UnconnectedPing:
-                    this.handleUnconnectedPing( stream, address, ctx );
+                    this.handleUnconnectedPing( buffer, address, ctx );
                     break;
                 case Identifiers.OpenConnectionRequest1:
-                    this.handleOpenConnectionRequest1( stream, address, ctx );
+                    this.handleOpenConnectionRequest1( buffer, address, ctx );
                     break;
                 case Identifiers.OpenConnectionRequest2:
-                    this.handleOpenConnectionRequest2( stream, address, ctx );
+                    this.handleOpenConnectionRequest2( buffer, address, ctx );
                     break;
                 default:
                     break;
@@ -100,9 +99,9 @@ public class Listener {
         }
     }
 
-    private void handleUnconnectedPing( BinaryStream buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
+    private void handleUnconnectedPing( ByteBuf buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
         UnconnectedPing decodedPacket = new UnconnectedPing();
-        decodedPacket.fill( buffer.getBuffer() );
+        decodedPacket.fill( buffer );
         decodedPacket.read();
 
         UnconnectedPong packet = new UnconnectedPong();
@@ -112,9 +111,9 @@ public class Listener {
         this.sendPacket( packet, address );
     }
 
-    private void handleOpenConnectionRequest1( BinaryStream buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
+    private void handleOpenConnectionRequest1( ByteBuf buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
         OpenConnectionRequest1 decodedPacket = new OpenConnectionRequest1();
-        decodedPacket.fill( buffer.getBuffer() );
+        decodedPacket.fill( buffer );
         decodedPacket.read();
 
         if ( decodedPacket.getProtocol() != 10 ) { //Raknet protocol version
@@ -131,9 +130,9 @@ public class Listener {
         this.sendPacket( packet, address );
     }
 
-    private void handleOpenConnectionRequest2( BinaryStream buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
+    private void handleOpenConnectionRequest2( ByteBuf buffer, InetSocketAddress address, ChannelHandlerContext ctx ) {
         OpenConnectionRequest2 decodedPacket = new OpenConnectionRequest2();
-        decodedPacket.fill( buffer.getBuffer() );
+        decodedPacket.fill( buffer );
         decodedPacket.read();
 
         OpenConnectionReply2 packet = new OpenConnectionReply2();

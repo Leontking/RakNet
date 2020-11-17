@@ -16,7 +16,7 @@ import java.util.Arrays;
  */
 public class BinaryStream {
 
-    private ByteBuf buffer;
+    public ByteBuf buffer;
 
     public BinaryStream() {
         this.buffer = Unpooled.buffer(0);
@@ -30,7 +30,6 @@ public class BinaryStream {
 
     public void fill( ByteBuf buffer ) {
         this.buffer = buffer;
-        this.buffer.retain();
     }
 
     public final int readAvailable() {
