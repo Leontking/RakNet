@@ -30,11 +30,9 @@ public class AcknowledgePacket extends Packet {
         this.packets.clear();
 
         short recordCount = this.readShort();
-        //System.out.println( "Record " + recordCount );
 
         for ( int i = 0; i < recordCount; i++ ) {
             int recordType = this.readByte();
-           // System.out.println( "RecordType: " + recordType );
 
             if ( recordType == 0 ) {
                 int start = this.readLTriad();
@@ -46,10 +44,8 @@ public class AcknowledgePacket extends Packet {
                         throw new IndexOutOfBoundsException( "Maximum acknowledgement packets size exceeded" );
                     }
                 }
-               // System.out.println( recordType + " - " + start + " - " + end );
             } else {
                 int packet = this.readLTriad();
-                //System.out.println( "PacketSize -> " + packet );
                 this.packets.add( packet );
             }
         }
@@ -62,8 +58,8 @@ public class AcknowledgePacket extends Packet {
         short records = 0;
         BinaryStream stream = new BinaryStream();
         this.packets.sort( Collections.reverseOrder() );
-
         int count = this.packets.size();
+
         if ( count > 0 ) {
             int pointer = 1;
             int start = this.packets.get( 0 );
@@ -89,8 +85,18 @@ public class AcknowledgePacket extends Packet {
                     records++;
                 }
             }
-            this.writeShort( records );
-            this.fill( stream.getBuffer() );
+
+            if ( start == last ) {
+                stream.writeBoolean( true );
+                stream.writeLTriad( start );
+            } else {
+                stream.writeBoolean( false );
+                stream.writeLTriad( start );
+                stream.writeLTriad( last );
+            }
+            records+=1;
         }
+        this.writeShort( records );
+        this.writeBytes( stream.getBuffer() );
     }
 }

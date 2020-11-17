@@ -11,4 +11,11 @@ public class ACK extends AcknowledgePacket {
     public ACK() {
         super( Identifiers.AcknowledgePacket );
     }
+
+    @Override
+    public String toString() {
+        return "ACK{" +
+                "packetId=" + packetId +
+                '}';
+    }
 }

@@ -23,7 +23,6 @@ public class ConnectedPing extends Packet {
     @Override
     public void read() {
         this.clientTimestamp = this.readLong();
-        System.out.println( this );
     }
 
     @Override

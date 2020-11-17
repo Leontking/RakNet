@@ -11,7 +11,6 @@ import org.jukeboxmc.raknet.utils.BinaryStream;
 public abstract class Packet extends BinaryStream {
 
     public byte packetId;
-    public long sendTime;
 
     public Packet( byte packetId ) {
         this.packetId = packetId;

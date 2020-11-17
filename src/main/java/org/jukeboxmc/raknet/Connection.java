@@ -77,7 +77,6 @@ public class Connection {
             return;
         }
         this.isActive = false;
-
         if ( this.ackQueue.size() > 0 ) {
             ACK ack = new ACK();
             ack.setPackets( this.ackQueue );
@@ -144,9 +143,7 @@ public class Connection {
             this.handleACK( buffer );
             System.out.println( "ACK was handelt!" );
         } else if ( ( packetId & BitFlags.NACK ) != 0 ) {
-            System.out.println( "Handle NACK..." );
             this.handleNACK( buffer );
-            System.out.println( "NACK was handelt!" );
         } else {
             System.out.println( "Datagram" );
             this.handleDatagram( buffer.readerIndex( 0 ) );
@@ -199,8 +196,7 @@ public class Connection {
         packet.read();
 
         for ( int seq : packet.getPackets() ) {
-            int key = packet.getPackets().indexOf( seq );
-            this.recoveryQueue.remove( key );
+            this.recoveryQueue.remove( seq );
         }
     }
 
@@ -214,7 +210,6 @@ public class Connection {
                 DataPacket pk = this.recoveryQueue.get( seq );
                 pk.sequenceNumber = this.sendSequenceNumber++;
                 pk.sendTime = System.currentTimeMillis();
-                pk.write();
                 this.sendPacket( pk );
                 this.recoveryQueue.remove( seq );
             }
@@ -237,18 +232,19 @@ public class Connection {
                 this.handlePacket( packet );
 
                 if ( this.receivedWindow.size() > 0 ) {
-                    ArrayList<Map.Entry<Integer, EncapsulatedPacket>> entries = new ArrayList<>( this.reliableWindow.entrySet() );
+                    ArrayList<Map.Entry<Integer, EncapsulatedPacket>> windows = new ArrayList<>( this.reliableWindow.entrySet() );
                     Map<Integer, EncapsulatedPacket> reliableWindow = new LinkedHashMap<>();
-                    entries.sort( Comparator.comparingInt( Map.Entry::getKey ) );
+                    windows.sort( Comparator.comparingInt( Map.Entry::getKey ) );
 
-                    for ( Map.Entry<Integer, EncapsulatedPacket> entry : entries ) {
+                    for ( Map.Entry<Integer, EncapsulatedPacket> entry : windows ) {
                         reliableWindow.put( entry.getKey(), entry.getValue() );
                     }
 
                     this.reliableWindow = reliableWindow;
 
                     for ( Map.Entry<Integer, EncapsulatedPacket> entry : this.reliableWindow.entrySet() ) {
-                        if ( entry.getKey() - this.lastReliableIndex != 1 ) {
+                        Integer seqIndex = entry.getKey();
+                        if ( seqIndex - this.lastReliableIndex != 1 ) {
                             break;
                         }
                         this.lastReliableIndex++;
@@ -256,7 +252,7 @@ public class Connection {
                         this.reliableWindowEnd++;
                         this.handlePacket( entry.getValue() );
 
-                        this.reliableWindow.remove( entry.getKey() );
+                        this.reliableWindow.remove( seqIndex );
                     }
                 }
             } else {
@@ -277,8 +273,6 @@ public class Connection {
                 if ( id == Identifiers.ConnectionRequest ) {
                     this.handleConnectionRequest( packet.buffer );
                 } else if ( id == Identifiers.NewIncomingConnection ) {
-                    System.out.println( "NewConnecion" );
-
                     NewIncomingConnection incomingConnection = new NewIncomingConnection();
                     incomingConnection.fill( packet.buffer );
                     incomingConnection.read();
@@ -286,7 +280,6 @@ public class Connection {
                     int serverPort = this.listener.getAddress().getPort();
                     if ( incomingConnection.getAddress().getPort() == serverPort ) {
                         this.state = Status.CONNECTED;
-                        System.out.println( "Connected!!!" );
                     }
                 }
             } else if ( id == Identifiers.DisconnectNotification ) {
@@ -315,11 +308,9 @@ public class Connection {
             this.sendQueue();
         }
         this.sendQueue.getPackets().add( encapsulatedPacket.toBinary() );
-        System.out.println( "Call-2" );
     }
 
     private void handleConnectionRequest( ByteBuf buffer ) {
-        System.out.println( "ConnectionRequest" );
         ConnectionRequest connectionRequest = new ConnectionRequest();
         connectionRequest.fill( buffer );
         connectionRequest.read();
@@ -338,7 +329,6 @@ public class Connection {
     }
 
     private void handleConnectedPing( ByteBuf buffer ) {
-        System.out.println( "ConnectionPING" );
         ConnectedPing connectedPing = new ConnectedPing();
         connectedPing.fill( buffer );
         connectedPing.read();
@@ -351,11 +341,10 @@ public class Connection {
         EncapsulatedPacket encapsulatedPacket = new EncapsulatedPacket();
         encapsulatedPacket.reliability = Reliability.UNRELIABLE;
         encapsulatedPacket.buffer = connectedPong.getBuffer();
-        System.out.println( "Pong" );
         this.addToQueue( encapsulatedPacket, Priority.IMMEDIATE );
     }
 
-    private void addEncapsulatedToQueue( EncapsulatedPacket packet, int priority ) {
+    public void addEncapsulatedToQueue( EncapsulatedPacket packet, int priority ) {
         if ( packet.reliability == Reliability.UNRELIABLE
                 || packet.reliability == Reliability.RELIABLE_ORDERED
                 || packet.reliability == Reliability.RELIABLE_SEQUENCED
@@ -401,6 +390,7 @@ public class Connection {
     }
 
     private void handleSplit( EncapsulatedPacket packet ) {
+        System.out.println( "HandleSplit" );
         if ( this.splitPackets.containsKey( packet.splitID ) ) {
             Map<Integer, EncapsulatedPacket> packetMap = this.splitPackets.get( packet.splitID );
             packetMap.put( packet.splitIndex, packet );
@@ -416,12 +406,13 @@ public class Connection {
             EncapsulatedPacket pk = new EncapsulatedPacket();
             BinaryStream stream = new BinaryStream();
             for ( EncapsulatedPacket value : localSplits.values() ) {
-                stream.appendBytes( packet.buffer.array() );
+                stream.writeBytes( value.buffer );
             }
             this.splitPackets.remove( packet.splitID );
 
             pk.buffer = stream.getBuffer();
             this.receivePacket( pk );
+            System.out.println( "RECIVED" );
         }
     }
 
@@ -432,16 +423,22 @@ public class Connection {
             this.sendQueue.sendTime = System.currentTimeMillis();
             this.recoveryQueue.put( this.sendQueue.sequenceNumber, this.sendQueue );
             this.sendQueue = new DataPacket();
-            System.out.println( "SendingQueue...." );
+            System.out.println( "SendQue" );
         }
     }
 
-    private void sendPacket( Packet packet ) {
+    public void sendPacket( Packet packet, boolean write ) {
+        if ( write ) {
+            this.sendPacket( packet );
+        }
+    }
+
+    public void sendPacket( Packet packet ) {
         packet.write();
         this.listener.sendBuffer( packet.getBuffer(), this.address ); //Maybe wrong
     }
 
-    private void disconnect( String reason ) {
+    public void disconnect( String reason ) {
         if ( reason == null ) {
             reason = "Unknown";
         }
@@ -450,7 +447,7 @@ public class Connection {
 
     void close() {
         ByteBuf buffer = Unpooled.buffer( 4 );
-        buffer.writeBytes( new byte[]{ 0x00, 0x00, 0x00, 0x15 } );
+        buffer.writeBytes( new byte[]{ 0x00, 0x00, 0x08, 0x15 } );
         EncapsulatedPacket packet = EncapsulatedPacket.fromBinary( buffer );
         if ( packet != null ) {
             this.addEncapsulatedToQueue( packet, Priority.IMMEDIATE );

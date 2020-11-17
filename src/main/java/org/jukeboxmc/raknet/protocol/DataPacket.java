@@ -17,6 +17,7 @@ public class DataPacket extends Packet {
     private List<Object> packets = new ArrayList<>();
 
     public int sequenceNumber;
+    public long sendTime = System.currentTimeMillis();
 
     public DataPacket() {
         super( BitFlags.VALID );
