@@ -39,7 +39,6 @@ public class NewIncomingConnection extends Packet {
 
         this.requestTimestamp = this.readLong();
         this.acceptedTimestamp = this.readLong();
-        System.out.println( this );
     }
 
     @Override

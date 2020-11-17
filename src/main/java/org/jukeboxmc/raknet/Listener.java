@@ -73,7 +73,7 @@ public class Listener {
         return this.isRunning;
     }
 
-    public void handlePackets( BinaryStream stream, DatagramPacket datagramPacket, InetSocketAddress address, ChannelHandlerContext ctx ) {
+    private void handlePackets( BinaryStream stream, DatagramPacket datagramPacket, InetSocketAddress address, ChannelHandlerContext ctx ) {
         byte packetId = stream.getBuffer().getByte( 0 );
         if ( packetId == Identifiers.Query ) {
             return;
@@ -146,18 +146,18 @@ public class Listener {
         this.connections.put( token, new Connection( this, decodedPacket.getMtu(), address ) );
     }
 
-    public void sendPacket( Packet packet, InetSocketAddress address ) {
+    private void sendPacket( Packet packet, InetSocketAddress address ) {
         if ( this.channel != null ) {
             packet.write();
             this.channel.writeAndFlush( new DatagramPacket( packet.getBuffer(), address ) );
         }
     }
 
-    public void sendBuffer( ByteBuf buffer, InetSocketAddress address ) {
+    void sendBuffer( ByteBuf buffer, InetSocketAddress address ) {
         this.channel.writeAndFlush( new DatagramPacket( buffer, address ) );
     }
 
-    public void removeConnection( Connection connection, String reason ) {
+    void removeConnection( Connection connection, String reason ) {
         InetSocketAddress address = connection.getAddress();
         String token = address.getHostName() + ":" + address.getPort();
         if ( this.connections.containsKey( token ) ) {
@@ -168,14 +168,14 @@ public class Listener {
         }
     }
 
-    public void tick() {
+    private void tick() {
         Timer timer = new Timer();
         timer.schedule( new TimerTask() {
             @Override
             public void run() {
                 if ( isRunning ) {
                     for ( Connection connection : connections.values() ) {
-                        //connection.update( System.currentTimeMillis() ); //TODO hier weiter machen ich glaub ab hier ist was falsch
+                        connection.update( System.currentTimeMillis() ); //TODO hier weiter machen ich glaub ab hier ist was falsch
                     }
                 } else {
                     this.cancel();

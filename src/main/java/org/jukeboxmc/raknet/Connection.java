@@ -58,7 +58,7 @@ public class Connection {
     private long lastUpdate;
     private boolean isActive = false;
 
-    public Connection( Listener listener, short mtuSize, InetSocketAddress address ) {
+    Connection( Listener listener, short mtuSize, InetSocketAddress address ) {
         this.listener = listener;
         this.mtuSize = mtuSize;
         this.address = address;
@@ -71,7 +71,7 @@ public class Connection {
     }
 
     //TODO hier weiter machen ich glaub ab hier ist was falsch
-    public void update( long timestamp ) {
+    void update( long timestamp ) {
         if ( !this.isActive && this.lastUpdate + 10000 < timestamp ) {
             this.disconnect( "Timeout" );
             return;
@@ -123,7 +123,7 @@ public class Connection {
 
         for ( int seq : this.receivedWindow ) {
             if ( seq < this.windowStart ) {
-                this.receivedWindow.remove( (Integer) seq );
+                this.receivedWindow.remove( seq );
             } else {
                 break;
             }
@@ -140,10 +140,13 @@ public class Connection {
 
         if ( ( packetId & BitFlags.VALID ) == 0 ) {//Ignore
         } else if ( ( packetId & BitFlags.ACK ) != 0 ) {
-            System.out.println( "ACK" );
+            System.out.println( "Handle ACK" );
             this.handleACK( buffer );
+            System.out.println( "ACK was handelt!" );
         } else if ( ( packetId & BitFlags.NACK ) != 0 ) {
+            System.out.println( "Handle NACK..." );
             this.handleNACK( buffer );
+            System.out.println( "NACK was handelt!" );
         } else {
             System.out.println( "Datagram" );
             this.handleDatagram( buffer.readerIndex( 0 ) );
